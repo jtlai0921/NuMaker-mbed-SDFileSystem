@@ -31,6 +31,12 @@ NuSDFileSystem::NuSDFileSystem(const char* name) :
 	
 	// Enable IP clock
 	CLK->AHBCLK |= CLK_AHBCLK_SDHCKEN_Msk; // SD Card driving clock.
+	    
+	SYS_UnlockReg();
+	
+	CLK_SetModuleClock(SDH_MODULE, CLK_CLKSEL0_SDHSEL_PLL, 1);
+	
+	SYS_LockReg();
 			
 	debug_if(SD_DBG, "SD MPF Setting & Enable SD IP Clock\n");
 
@@ -48,6 +54,12 @@ NuSDFileSystem::NuSDFileSystem(PinName SD_CDn, PinName SD_CMD, PinName SD_CLK, P
 	
 	// Enable IP clock
 	CLK->AHBCLK |= CLK_AHBCLK_SDHCKEN_Msk; // SD Card driving clock.
+	    
+	SYS_UnlockReg();
+	
+	CLK_SetModuleClock(SDH_MODULE, CLK_CLKSEL0_SDHSEL_PLL, 1);
+	
+	SYS_LockReg();
 			
 	debug_if(SD_DBG, "SD MPF Setting & Enable SD IP Clock\n");
 
