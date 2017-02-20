@@ -25,7 +25,7 @@ class NuSDFileSystem : public FATFileSystem {
 public:
 
     NuSDFileSystem(const char* name);
-	NuSDFileSystem(PinName SD_CDn, PinName SD_CMD, PinName SD_CLK, PinName SD_DAT0, PinName SD_DAT1, PinName SD_DAT2, PinName SD_DAT3, const char* name);
+    NuSDFileSystem(PinName SD_CDn, PinName SD_CMD, PinName SD_CLK, PinName SD_DAT0, PinName SD_DAT1, PinName SD_DAT2, PinName SD_DAT3, const char* name);
     virtual int disk_initialize();
     virtual int disk_status();
     virtual int disk_read(uint8_t* buffer, uint32_t block_number, uint32_t count);
@@ -34,14 +34,17 @@ public:
 
 protected:
 
-    int initialise_card();
-    uint32_t _sectors;
+    void init_sdh(PinName SD_CDn, PinName SD_CMD, PinName SD_CLK,
+        PinName SD_DAT0, PinName SD_DAT1, PinName SD_DAT2, PinName SD_DAT3);
+    void init_card();
+    bool card_inited();
     int cdv;
-    int _is_initialized;
-    int cardport;
+#if defined(TARGET_NUMAKER_PFM_NUC472)
+    int _sdport;
+#endif
 
 private:
-	int NuSDPinConfig(PinName SD_CDn, PinName SD_CMD, PinName SD_CLK, PinName SD_DAT0, PinName SD_DAT1, PinName SD_DAT2, PinName SD_DAT3);
+    int NuSDPinConfig(PinName SD_CDn, PinName SD_CMD, PinName SD_CLK, PinName SD_DAT0, PinName SD_DAT1, PinName SD_DAT2, PinName SD_DAT3);
 };
 
 #endif
