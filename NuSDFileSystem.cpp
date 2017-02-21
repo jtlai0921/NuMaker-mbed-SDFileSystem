@@ -25,7 +25,17 @@
 #define NU_SDH_DAT0         PF_5
 #define NU_SDH_DAT1         PF_4
 #define NU_SDH_DAT2         PF_3
-#define NU_SDH_DAT3         PF_2
+#define NU_SDH_DAT3         PF_2      
+
+#elif defined(TARGET_NUMAKER_PFM_M487)
+#define NU_SDH_CDn          PE_13
+#define NU_SDH_CMD          PE_12
+#define NU_SDH_CLK          PC_0
+#define NU_SDH_DAT0         PC_4
+#define NU_SDH_DAT1         PC_3
+#define NU_SDH_DAT2         PC_2
+#define NU_SDH_DAT3         PC_1
+
 #endif
 
 #if defined(TARGET_NUMAKER_PFM_NUC472)
@@ -33,18 +43,35 @@ extern DISK_DATA_T SD_DiskInfo0;
 extern DISK_DATA_T SD_DiskInfo1;
 extern SD_INFO_T SD0,SD1;
 extern int sd0_ok,sd1_ok;
+
+#elif defined(TARGET_NUMAKER_PFM_M487)
+extern int SDH_ok;
+extern SDH_INFO_T SD0, SD1;
+
 #endif
 
 #define SD_DBG             0
 
 NuSDFileSystem::NuSDFileSystem(const char* name) :
-    FATFileSystem(name) {
+    FATFileSystem(name), _sdh((SDName) NC),
+#if defined(TARGET_NUMAKER_PFM_NUC472)
+    _sdh_port((uint32_t) -1)
+#elif defined(TARGET_NUMAKER_PFM_M487)
+    _sdh_base(NULL)
+#endif
+{
 
     init_sdh(NU_SDH_CDn, NU_SDH_CMD, NU_SDH_CLK, NU_SDH_DAT0 ,NU_SDH_DAT1, NU_SDH_DAT2, NU_SDH_DAT3);
 }
         
 NuSDFileSystem::NuSDFileSystem(PinName SD_CDn, PinName SD_CMD, PinName SD_CLK, PinName SD_DAT0, PinName SD_DAT1, PinName SD_DAT2, PinName SD_DAT3, const char* name) :
-    FATFileSystem(name) {
+    FATFileSystem(name), _sdh((SDName) NC),
+#if defined(TARGET_NUMAKER_PFM_NUC472)
+    _sdh_port((uint32_t) -1)
+#elif defined(TARGET_NUMAKER_PFM_M487)
+    _sdh_base(NULL)
+#endif
+{
 
     init_sdh(SD_CDn, SD_CMD, SD_CLK, SD_DAT0, SD_DAT1, SD_DAT2, SD_DAT3);
 }
@@ -53,17 +80,7 @@ void NuSDFileSystem::init_sdh(PinName SD_CDn, PinName SD_CMD, PinName SD_CLK,
         PinName SD_DAT0, PinName SD_DAT1, PinName SD_DAT2, PinName SD_DAT3) {
     
     debug_if(SD_DBG, "SD MPF Setting & Enable SD IP Clock\n");
-    
-    // Configure SD IP clock 
-    SYS_UnlockReg();
-#if defined(TARGET_NUMAKER_PFM_NUC472)
-    // Enable IP clock
-    CLK->AHBCLK |= CLK_AHBCLK_SDHCKEN_Msk; // SD Card driving clock.
-    CLK_SetModuleClock(SDH_MODULE, CLK_CLKSEL0_SDHSEL_PLL, 1);
-#endif
-    SYS_LockReg();
-            
-            
+        
     // Configure SD multi-function pins
     uint32_t Sdcdn = pinmap_peripheral(SD_CDn,  PinMap_SD_CD);
     uint32_t Sdcmd = pinmap_peripheral(SD_CMD,  PinMap_SD_CMD);
@@ -80,7 +97,7 @@ void NuSDFileSystem::init_sdh(PinName SD_CDn, PinName SD_CMD, PinName SD_CLK,
     uint32_t Sdct3 = (SDName) pinmap_merge(Sdctl, Sdct2);
     uint32_t Sdct4 = (SDName) pinmap_merge(Sdct3, Sdcdn);
     
-    if (Sdct4 == NC) {
+    if (Sdct4 == (uint32_t) NC) {
         debug("SD pinmap error\n");
         return;
     }
@@ -93,19 +110,60 @@ void NuSDFileSystem::init_sdh(PinName SD_CDn, PinName SD_CMD, PinName SD_CLK,
     pinmap_pinout(SD_DAT2, PinMap_SD_DAT2);
     pinmap_pinout(SD_DAT3, PinMap_SD_DAT3);
 
-    // 
+    // Configure SD IP clock 
+    SYS_UnlockReg();
+    
+    // Determine SDH port dependent on passed-in pins
+    _sdh = (SDName) Sdct4;
 #if defined(TARGET_NUMAKER_PFM_NUC472)
-    if(NU_MODSUBINDEX(Sdct4) == 0)
-        _sdport = SD_PORT0;
-    else if(NU_MODSUBINDEX(Sdct4) == 1)
-        _sdport = SD_PORT1;
+    switch (NU_MODSUBINDEX(_sdh)) {
+    case 0:
+        _sdh_port = SD_PORT0;
+        break;
+        
+    case 1:
+        _sdh_port = SD_PORT1;
+        break;
+    }
+    
+    // Enable IP clock
+    CLK->AHBCLK |= CLK_AHBCLK_SDHCKEN_Msk; // SD Card driving clock.
+    CLK_SetModuleClock(SDH_MODULE, CLK_CLKSEL0_SDHSEL_PLL, 1);
+    
+#elif defined(TARGET_NUMAKER_PFM_M487)
+    _sdh_base = (SDH_T *) NU_MODBASE(_sdh);
+    
+    switch (NU_MODINDEX(_sdh)) {
+    case 0:
+        CLK->CLKSEL0 = (CLK->CLKSEL0 & ~CLK_CLKSEL0_SDH0SEL_Msk) | CLK_CLKSEL0_SDH0SEL_HCLK;
+        CLK->AHBCLK |= CLK_AHBCLK_SDH0CKEN_Msk; // SD Card driving clock.
+        break;
+        
+    case 1:
+        CLK->CLKSEL0 = (CLK->CLKSEL0 & ~CLK_CLKSEL0_SDH1SEL_Msk) | CLK_CLKSEL0_SDH1SEL_HCLK;
+        CLK->AHBCLK |= CLK_AHBCLK_SDH1CKEN_Msk; // SD Card driving clock.
+        break;
+    }
+    
 #endif
+
+    SYS_LockReg();
 }
 
 void NuSDFileSystem::init_card() {
+
+    if (_sdh == (SDName) NC) {
+        return;
+    }
+    
 #if defined(TARGET_NUMAKER_PFM_NUC472)
-    SD_Open(_sdport | CardDetect_From_GPIO);
-    SD_Probe(_sdport);
+    SD_Open(_sdh_port | CardDetect_From_GPIO);
+    SD_Probe(_sdh_port);
+
+#elif defined(TARGET_NUMAKER_PFM_M487)
+    SDH_Open(_sdh_base, CardDetect_From_GPIO);
+    SDH_Probe(_sdh_base);
+    
 #endif
 }
 
@@ -114,7 +172,7 @@ bool NuSDFileSystem::card_inited()
     bool initialized = false;
     
 #if defined(TARGET_NUMAKER_PFM_NUC472)
-    switch (_sdport) {
+    switch (_sdh_port) {
     case SD_PORT0:
         initialized = sd0_ok && (SD0.CardType != SD_TYPE_UNKNOWN);
         break;
@@ -123,6 +181,18 @@ bool NuSDFileSystem::card_inited()
         initialized = sd1_ok && (SD1.CardType != SD_TYPE_UNKNOWN);
         break;
     }
+    
+#elif defined(TARGET_NUMAKER_PFM_M487)
+    switch (NU_MODINDEX(_sdh)) {
+    case 0:
+        initialized = SDH_ok && (SD0.CardType != SDH_TYPE_UNKNOWN);
+        break;
+    
+    case 1:
+        initialized = SDH_ok && (SD1.CardType != SDH_TYPE_UNKNOWN);
+        break;
+    }
+    
 #endif
 
     return initialized;
@@ -144,12 +214,16 @@ int NuSDFileSystem::disk_write(const uint8_t* buffer, uint32_t block_number, uin
     if (! card_inited()) {
         return -1;
     }
-    
-    if(SD_Write(_sdport, (uint8_t*)buffer, block_number, count)!=0)
+
+#if defined(TARGET_NUMAKER_PFM_NUC472)
+    if (SD_Write(_sdh_port, (uint8_t*)buffer, block_number, count) != 0) {
+#elif defined(TARGET_NUMAKER_PFM_M487)
+    if (SDH_Write(_sdh_base, (uint8_t*)buffer, block_number, count) != 0) {
+#endif
         return 1;
-    else
-        return 0;
-        
+    }
+    
+    return 0;    
 }
 
 int NuSDFileSystem::disk_read(uint8_t* buffer, uint32_t block_number, uint32_t count) {
@@ -157,11 +231,15 @@ int NuSDFileSystem::disk_read(uint8_t* buffer, uint32_t block_number, uint32_t c
         return -1;
     }
     
-    if(SD_Read(_sdport, (uint8_t*)buffer, block_number, count)!=0)
+#if defined(TARGET_NUMAKER_PFM_NUC472)
+    if (SD_Read(_sdh_port, (uint8_t*)buffer, block_number, count) != 0) {
+#elif defined(TARGET_NUMAKER_PFM_M487)
+    if (SDH_Read(_sdh_base, (uint8_t*)buffer, block_number, count) != 0) {
+#endif
         return 1;
-    else
-        return 0;
-
+    }
+    
+    return 0;
 }
 
 int NuSDFileSystem::disk_status() {
@@ -178,7 +256,7 @@ uint32_t NuSDFileSystem::disk_sectors() {
     uint32_t n_sector = 0;
     
 #if defined(TARGET_NUMAKER_PFM_NUC472)
-    switch (_sdport) {
+    switch (_sdh_port) {
     case SD_PORT0:
         n_sector = SD_DiskInfo0.totalSectorN;
         break;
@@ -186,6 +264,17 @@ uint32_t NuSDFileSystem::disk_sectors() {
         n_sector = SD_DiskInfo1.totalSectorN;
         break;
     }
+    
+#elif defined(TARGET_NUMAKER_PFM_M487)
+    switch (NU_MODINDEX(_sdh)) {
+    case 0:
+        n_sector = SD0.totalSectorN;
+        break;
+    case 1:
+        n_sector = SD1.totalSectorN;
+        break;
+    }
+    
 #endif
 
     return n_sector;

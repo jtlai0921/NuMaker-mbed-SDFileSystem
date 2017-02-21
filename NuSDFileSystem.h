@@ -39,9 +39,13 @@ protected:
     void init_card();
     bool card_inited();
     int cdv;
+    SDName      _sdh;
 #if defined(TARGET_NUMAKER_PFM_NUC472)
-    int _sdport;
+    uint32_t    _sdh_port;
+#elif defined(TARGET_NUMAKER_PFM_M487)
+    SDH_T *     _sdh_base;
 #endif
+    
 
 private:
     int NuSDPinConfig(PinName SD_CDn, PinName SD_CMD, PinName SD_CLK, PinName SD_DAT0, PinName SD_DAT1, PinName SD_DAT2, PinName SD_DAT3);
